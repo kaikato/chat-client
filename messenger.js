@@ -1,11 +1,6 @@
 'use strict'
 
-/** ******* Imports ********/
-
 const {
-  /* The following functions are all of the cryptographic
-  primatives that you should need for this assignment.
-  See lib.js for details on usage. */
   byteArrayToString,
   genRandomSalt,
   generateEG, // async
@@ -23,13 +18,10 @@ const {
 /** ******* Implementation ********/
 
 class MessengerClient {
-  constructor (certAuthorityPublicKey, govPublicKey) {
+  constructor(certAuthorityPublicKey, govPublicKey) {
     // the certificate authority DSA public key is used to
     // verify the authenticity and integrity of certificates
-    // of other users (see handout and receiveCertificate)
-
-    // you can store data as needed in these objects.
-    // Feel free to modify their structure as you see fit.
+    // of other users
     this.caPublicKey = certAuthorityPublicKey
     this.govPublicKey = govPublicKey
     this.conns = {} // data for each active connection
@@ -46,10 +38,10 @@ class MessengerClient {
    *
    * Return Type: certificate object/dictionary
    */
-  async generateCertificate (username) {
-    
+  async generateCertificate(username) {
+
     this.EGKeyPair = await generateEG();
-    const certificate = {username:username, pub:this.EGKeyPair.pub};
+    const certificate = { username: username, pub: this.EGKeyPair.pub };
     return certificate;
   }
 
@@ -62,13 +54,13 @@ class MessengerClient {
  *
  * Return Type: void
  */
-  async receiveCertificate (certificate, signature) {
-  // The signature will be on the output of stringifying the certificate
-  // rather than on the certificate directly.
+  async receiveCertificate(certificate, signature) {
+    // The signature will be on the output of stringifying the certificate
+    // rather than on the certificate directly.
     const certString = JSON.stringify(certificate);
     var verify = await verifyWithECDSA(this.caPublicKey, certString, signature);
-    if (!verify){
-      throw("invalid signature on certificate");
+    if (!verify) {
+      throw ("invalid signature on certificate");
     }
     this.certs[certificate.username] = certificate;
   }
@@ -82,7 +74,7 @@ class MessengerClient {
  *
  * Return Type: Tuple of [dictionary, string]
  */
-  async sendMessage (name, plaintext) {
+  async sendMessage(name, plaintext) {
     const header = {}
     let ciphertext = ''
 
@@ -92,7 +84,7 @@ class MessengerClient {
       var DHs = await generateEG();
       var DH2 = await computeDH(DHs.sec, this.certs[name].pub);
       var KDF = await HKDF(SK, DH2, "ratchet-str");
-      const state = {DHs:DHs, DHr:this.certs[name].pub, RK:KDF[0], CKs:KDF[1], CKr:'', Ns:0, Nr:0, PN:0, MKSKIPPED:new Map(), prev:this.certs[name].pub};
+      const state = { DHs: DHs, DHr: this.certs[name].pub, RK: KDF[0], CKs: KDF[1], CKr: '', Ns: 0, Nr: 0, PN: 0, MKSKIPPED: new Map(), prev: this.certs[name].pub };
       this.conns[name] = state;
     }
 
@@ -104,7 +96,7 @@ class MessengerClient {
 
     var IV = await genRandomSalt();
     header.receiverIV = IV;
-    
+
     header.DH = this.conns[name].DHs.pub;
     header.PN = this.conns[name].PN;
     header.Ns = this.conns[name].Ns;
@@ -117,7 +109,7 @@ class MessengerClient {
     var govAESKey = await HMACtoAESKey(govDH, govEncryptionDataStr);
     header.ivGov = await genRandomSalt();
     header.cGov = await encryptWithGCM(govAESKey, MK2, header.ivGov);
-    
+
     ciphertext = await encryptWithGCM(MK, plaintext, IV, JSON.stringify(header));
 
     return [header, ciphertext]
@@ -132,18 +124,18 @@ class MessengerClient {
  *
  * Return Type: string
  */
-  async receiveMessage (name, [header, ciphertext]) {
+  async receiveMessage(name, [header, ciphertext]) {
 
     if (!this.conns[name]) {
       var SK = await computeDH(this.EGKeyPair.sec, this.certs[name].pub);
-      const state = {DHs:this.EGKeyPair, DHr:'', RK:SK, CKs:'', CKr:'', Ns:0, Nr:0, PN:0, MKSKIPPED:new Map()}; //not totally sure what DHs should be here
+      const state = { DHs: this.EGKeyPair, DHr: '', RK: SK, CKs: '', CKr: '', Ns: 0, Nr: 0, PN: 0, MKSKIPPED: new Map() }; //not totally sure what DHs should be here
       this.conns[name] = state;
     }
 
     // Try skipped messages.
     let t = await cryptoKeyToJSON(header.DH);
-    t = JSON.stringify(t)+ header.Ns;
-    if (this.conns[name].MKSKIPPED.has(t)){
+    t = JSON.stringify(t) + header.Ns;
+    if (this.conns[name].MKSKIPPED.has(t)) {
       let mk = this.conns[name].MKSKIPPED.get(t);
       this.conns[name].MKSKIPPED.delete(t);
       let plaintextt = await decryptWithGCM(mk, ciphertext, header.receiverIV, JSON.stringify(header));
@@ -156,7 +148,7 @@ class MessengerClient {
     if (header.DH != this.conns[name].DHr) {
       // skip message keys
       if (this.conns[name].CKr) {
-        while(this.conns[name].Nr < header.PN){
+        while (this.conns[name].Nr < header.PN) {
           var MKt = await HMACtoAESKey(this.conns[name].CKr, "AESKeyGen");
           var CKt = await HMACtoHMACKey(this.conns[name].CKr, "HMACKeyGen");
           this.conns[name].CKr = CKt;
@@ -187,7 +179,7 @@ class MessengerClient {
 
     // skip message keys
     if (this.conns[name].CKr) {
-      while(this.conns[name].Nr < header.Ns){
+      while (this.conns[name].Nr < header.Ns) {
         var MKt = await HMACtoAESKey(this.conns[name].CKr, "AESKeyGen");
         var CKt = await HMACtoHMACKey(this.conns[name].CKr, "HMACKeyGen");
         this.conns[name].CKr = CKt;
